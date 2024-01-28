@@ -1,0 +1,289 @@
+
+What is the Web?
+The term "Web" typically refers to the World Wide Web (WWW or W3), which is an information space on the internet that consists of interconnected documents and resources. These documents are linked by hyperlinks and URLs (Uniform Resource Locators) and are accessible via the internet using web browsers.
+
+Web Features:
+
+Hyperlinks: The ability to link one document or resource to another through hyperlinks.
+Web Browsers: Software applications that allow users to access and view web documents.
+HTML (Hypertext Markup Language): The standard markup language for creating web pages.
+HTTP (Hypertext Transfer Protocol): The protocol used for transmitting data on the World Wide Web.
+URLs (Uniform Resource Locators): Addresses used to access resources on the web.
+Web Servers: Computers or systems that store and deliver web content to users.
+Multimedia Content: Integration of various media types, such as text, images, videos, and audio.
+W3C (World Wide Web Consortium) and W3C Members:
+The W3C is an international community that develops standards and guidelines to ensure the long-term growth of the Web. Founded in 1994 by Tim Berners-Lee, the inventor of the World Wide Web, W3C works to make the Web accessible, interoperable, and user-friendly.
+
+W3C members include a diverse range of organizations, including major technology companies, research institutions, government agencies, and individual experts. Members collaborate to create and maintain web standards, such as HTML, CSS, and various protocols, to ensure consistency and compatibility across different platforms and devices.
+
+Introduction to WHATWG (Web Hypertext Application Technology Working Group):
+WHATWG is a community of individuals and organizations focused on evolving and maintaining the web platform. It was formed in response to concerns about the development of HTML and related technologies. WHATWG aims to develop and maintain living standards that reflect the ongoing, collaborative work of the web community.
+
+Notably, WHATWG played a crucial role in the development of HTML5, a major revision of the HTML standard, and continues to contribute to the evolution of web technologies. While W3C and WHATWG have different approaches and processes, they share a common goal of advancing web standards for the benefit of the entire internet community.
+
+
+################################## HTML ####################################
+
+
+Introduction:
+HTML (Hypertext Markup Language) is the standard language used to create and design web pages. It provides a structure for content on the World Wide Web, using a system of markup elements or tags that define the different parts of a document. HTML allows the inclusion of text, images, links, forms, and other elements to create a rich and interactive user experience on the web.
+
+Parts in HTML Document:
+An HTML document typically consists of the following parts:
+
+Document Type Declaration (DOCTYPE): Specifies the version of HTML being used.
+HTML Tag: The root element that wraps the entire HTML document.
+Head Section: Contains metadata, links to external resources, and other information about the document.
+Body Section: Contains the content of the document, such as text, images, links, and interactive elements.
+Version Information:
+The version of HTML is specified in the DOCTYPE declaration at the beginning of the document. For example, the DOCTYPE declaration for HTML5 looks like this:
+
+html
+Copy code
+<!DOCTYPE html>
+This declaration tells the browser that the document follows the HTML5 standard.
+
+Head Section:
+The <head> section of an HTML document contains metadata and links to external resources. Common elements found in the head section include:
+
+<title>: Specifies the title of the web page.
+<meta>: Provides metadata about the document, such as character set, description, and keywords.
+<link>: Links to external resources like stylesheets or favicons.
+Meta Information:
+The <meta> tag is used to provide metadata about the HTML document. Common attributes include:
+
+charset: Specifies the character encoding for the document (e.g., UTF-8).
+name and content: Used for various purposes, such as setting the viewport for responsive design.
+Favicons:
+A favicon is a small icon associated with a website that appears in the browser's address bar or tabs. It is defined using the <link> tag in the head section. For example:
+
+html
+Copy code
+<link rel="icon" href="favicon.ico" type="image/x-icon">
+Body Section:
+The <body> section contains the actual content of the HTML document, such as text, images, links, forms, and other elements that make up the visible part of the webpage.
+
+HTML Forms:
+Forms in HTML are used to collect user input. They are defined using the <form> tag and can contain various input elements like text fields, radio buttons, checkboxes, and buttons.
+
+Anchors, Images:
+
+<a> (Anchor): Creates hyperlinks, allowing users to navigate to other pages or resources.
+<img> (Image): Embeds images in the HTML document, using the src attribute to specify the image source.
+These elements play a crucial role in creating interactive and visually appealing web pages.
+
+
+######################## Advance HTML ##########################################
+
+Introduction:
+HTML5, the fifth revision of the HTML standard, is a markup language used for structuring and presenting content on the World Wide Web. It brings new features, capabilities, and improvements over its predecessors, enhancing the development of web applications and content.
+
+HTML5 History:
+HTML5 development began in 2004 as an initiative of the Web Hypertext Application Technology Working Group (WHATWG) and later became a formal project of the World Wide Web Consortium (W3C). It aimed to address the limitations of older HTML versions and provide a more robust and versatile platform for web development.
+
+Why HTML5?
+HTML5 was developed to meet the evolving needs of the web and to overcome the limitations of older HTML versions. Some key reasons for adopting HTML5 include:
+
+Rich Multimedia Support: Improved support for audio and video without the need for third-party plugins.
+Enhanced Semantics: Introduction of new semantic elements to better structure content.
+Improved Accessibility: Features that facilitate the creation of more accessible web applications.
+Cross-platform Compatibility: Better compatibility with different devices and browsers.
+Offline Web Applications: Capabilities for creating web applications that work even when offline.
+Simplified and Consistent Code: Streamlined syntax and improved consistency for developers.
+New Features and Groups:
+HTML5 introduces numerous new features, including:
+
+New Semantic Elements: Such as <article>, <section>, <nav>, <header>, <footer>, etc., to better define the structure of a document.
+Canvas and SVG: Elements for drawing graphics and animations directly in the browser.
+Audio and Video Elements: <audio> and <video> tags for embedding media without requiring external plugins.
+Geolocation API: Allows web applications to request and use the user's location information.
+Web Storage: Provides a way to store data on the client-side, improving offline web application capabilities.
+Structure of HTML5 Document:
+The basic structure of an HTML5 document includes the <!DOCTYPE html> declaration followed by the <html>, <head>, and <body> sections. The structure is simplified, and new semantic elements are used for better organization.
+
+Power of HTML5 and Features:
+HTML5 empowers web developers with features that enhance the user experience:
+
+Responsive Web Design: Support for creating websites that adapt to different screen sizes.
+Improved Performance: Optimizations for faster page loading and execution.
+APIs for Web Applications: Integration of various APIs like WebSockets, Web Workers, and more.
+Enhanced Forms: New input types, attributes, and validation for creating sophisticated forms.
+Semantics and Block Level Elements:
+HTML5 introduces semantic elements that provide meaning to the structure of a document. Block-level elements like <header>, <footer>, <nav>, and <article> contribute to better document organization and understanding.
+
+HTML5 Forms:
+HTML5 enhances forms with features like new input types (email, url, date, etc.), pattern validation, and improved user interaction, making form development more robust and user-friendly.
+
+HTML5 Multimedia:
+The <audio> and <video> elements in HTML5 allow embedding multimedia content directly into web pages without relying on external plugins. This simplifies the integration of audio and video elements in web development.
+
+
+################################## CSS #################################################
+
+
+Introduction:
+Cascading Style Sheets (CSS) is a style sheet language used for describing the presentation of a document written in HTML or XML. It enables web developers to control the layout, appearance, and style of web pages, ensuring a consistent and visually appealing user experience.
+
+CSS Basics:
+CSS is used to style HTML documents by applying rules that define how elements should be displayed. It separates the structure of a web page (HTML) from its presentation (CSS), allowing for more flexibility and easier maintenance.
+
+CSS Introduction:
+CSS is used to style the visual presentation of web pages. It includes rules for specifying styles such as colors, fonts, margins, padding, and positioning. By applying CSS to HTML elements, web developers can control the layout and appearance of their web pages.
+
+CSS Syntax:
+CSS uses a simple syntax that consists of selectors and declarations. A CSS rule is made up of a selector (which targets HTML elements) and a declaration block (which contains style properties and values). For example:
+
+css
+Copy code
+selector {
+  property: value;
+}
+CSS Versions:
+CSS has evolved over time, with different versions introducing new features and improvements. Major versions include CSS1, CSS2, and CSS3. CSS3 is the latest version and is modular, allowing for the introduction of new features without waiting for a complete revision of the entire specification.
+
+CSS Id & Class:
+CSS allows styling based on element IDs and classes. An ID is unique to a specific element, while a class can be applied to multiple elements. Selectors for IDs start with #, and selectors for classes start with .. For example:
+
+css
+Copy code
+#uniqueId {
+  /* styles for element with ID 'uniqueId' */
+}
+
+.className {
+  /* styles for elements with class 'className' */
+}
+CSS Styling:
+CSS styling involves setting properties such as color, background, margin, padding, and more. Styles can be applied to specific elements or groups of elements using appropriate selectors.
+
+Styling Backgrounds:
+Background styling in CSS includes properties like background-color, background-image, background-repeat, and background-position. These properties allow customization of the background appearance of an element.
+
+Styling Text:
+Text styling involves properties such as color, font-family, font-size, font-weight, text-align, and more. These properties control the appearance of text content within HTML elements.
+
+Styling Fonts:
+CSS provides properties for styling fonts, such as font-family to specify the font, font-size to set the size, and font-weight to control the boldness of the text.
+
+CSS Borders:
+Borders can be applied to HTML elements using properties like border-width, border-style, and border-color. These properties control the thickness, style, and color of the element's border.
+
+CSS is a powerful tool that, when used effectively, enhances the presentation and user experience of web pages. It allows developers to create visually appealing and responsive designs for a wide range of devices and screen sizes.
+
+
+####################################################### JavaScript ###################################################
+
+
+What is Script? Types of Scripts:
+A script is a set of instructions or commands that are executed by a computer program or scripting engine. In the context of web development, scripts are often written in scripting languages to control the behavior of web pages. There are different types of scripts, including:
+
+Client-Side Scripts: Scripts executed on the client's browser. Examples include JavaScript.
+
+Server-Side Scripts: Scripts executed on the web server. Examples include PHP, Python, and Ruby.
+
+Shell Scripts: Scripts designed to be run in a shell or command-line interface.
+
+Batch Scripts: Scripts written for batch processing on operating systems like Windows.
+
+Introduction to JavaScript:
+JavaScript is a high-level, interpreted programming language that is primarily used for client-side web development. It allows developers to add interactivity, dynamic content, and behavior to web pages. JavaScript is supported by all modern web browsers.
+
+Comments and Types of Comments:
+Comments in JavaScript are used to add explanatory notes within the code that are ignored during execution. There are two types of comments in JavaScript:
+
+Single-line comments: Denoted by //. Everything after // on a line is treated as a comment.
+
+javascript
+Copy code
+// This is a single-line comment
+Multi-line comments: Enclosed between /* and */. Everything between these symbols is treated as a comment.
+
+javascript
+Copy code
+/*
+  This is a
+  multi-line comment
+*/
+Popup Boxes:
+JavaScript allows the use of popup boxes to interact with users. There are three types of popup boxes:
+
+Alert Box: Displays a message to the user with an "OK" button.
+
+javascript
+Copy code
+alert("This is an alert box!");
+Confirm Box: Displays a message and provides "OK" and "Cancel" buttons. Returns true if "OK" is pressed, and false if "Cancel" is pressed.
+
+javascript
+Copy code
+var result = confirm("Do you want to proceed?");
+Prompt Box: Prompts the user to enter input. Returns the entered value or null if canceled.
+
+javascript
+Copy code
+var userInput = prompt("Enter your name:", "John Doe");
+Variables & Operators:
+Variables in JavaScript are used to store and manipulate data. Operators perform operations on variables and values. Examples of operators include arithmetic operators (+, -, *, /), assignment operator (=), and comparison operators (==, ===, !=, !==).
+
+javascript
+Copy code
+var x = 10; // Variable declaration and assignment
+var y = 5;
+var sum = x + y; // Addition operation
+JavaScript Functions and Events:
+Functions in JavaScript are blocks of reusable code that perform a specific task. Events are actions or occurrences that happen in the browser, such as a button click or page load. JavaScript functions can be triggered by events.
+
+javascript
+Copy code
+// Function declaration
+function greet(name) {
+  alert("Hello, " + name + "!");
+}
+
+// Event handling
+document.getElementById("myButton").addEventListener("click", function() {
+  greet("John");
+});
+Conditional Statements:
+Conditional statements in JavaScript allow the execution of different code blocks based on certain conditions. Examples include if, else if, and else.
+
+javascript
+Copy code
+var age = 20;
+
+if (age < 18) {
+  alert("You are a minor.");
+} else if (age >= 18 && age < 21) {
+  alert("You are an adult but not allowed to drink.");
+} else {
+  alert("You are a legal adult.");
+}
+Looping Control Statement:
+Loops in JavaScript allow the execution of a block of code repeatedly. The two main types of loops are for and while.
+
+javascript
+Copy code
+// For loop
+for (var i = 0; i < 5; i++) {
+  console.log(i); // Prints 0, 1, 2, 3, 4
+}
+
+// While loop
+var counter = 0;
+while (counter < 5) {
+  console.log(counter); // Prints 0, 1, 2, 3, 4
+  counter++;
+}
+JavaScript's scripting capabilities make it a crucial language for web development, enabling dynamic and interactive web pages. It is commonly used alongside HTML and CSS to create modern, feature-rich web applications.
+
+
+
+Code Sand Box : 
+
+https://codesandbox.io/p/sandbox/vanilla-js-demo-6049kj?file=%2Findex.html%3A8%2C10
+
+
+
+
+https://codesandbox.io/p/sandbox/javascript-refresher-j56djd
+
