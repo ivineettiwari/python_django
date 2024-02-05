@@ -1,0 +1,17 @@
+
+body {
+    font-family: Arial, sans-serif;
+    margin: 20px;
+}
+
+#userList {
+    list-style-type: none;
+    padding: 0;
+}
+
+.userCard {
+    border: 1px solid #ddd;
+    margin: 10px;
+    padding: 10px;
+    border-radius: 5px;
+}
