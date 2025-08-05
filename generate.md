@@ -1,514 +1,250 @@
-# Comprehensive Database Utility with PostgreSQL and Oracle Support
-
-Here's a complete database utility that implements context managers for both PostgreSQL and Oracle with all CRUD operations and more:
+Here's a comprehensive logging utility using `loguru` that handles daily log file rotation and automatic cleanup of old logs (older than 60 days):
 
 ```python
-import psycopg2
-import oracledb
-from typing import Optional, Dict, Any, List, Union, Tuple, Generator
-from dataclasses import dataclass
-import logging
+# logging_utils.py
+import os
+import time
+from pathlib import Path
+from datetime import datetime, timedelta
+from loguru import logger
+import schedule
+import threading
+from typing import Optional
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-@dataclass
-class DBConfig:
-    """Configuration for database connections"""
-    db_type: str  # 'postgres' or 'oracle'
-    user: str
-    password: str
-    host: str = 'localhost'
-    port: Optional[int] = None
-    dbname: Optional[str] = None  # For PostgreSQL
-    service_name: Optional[str] = None  # For Oracle
-    sid: Optional[str] = None  # For Oracle (alternative to service_name)
-    thick_mode: bool = False  # For Oracle
-    pool_min: int = 1  # Connection pool minimum
-    pool_max: int = 5  # Connection pool maximum
-    pool_increment: int = 1  # Connection pool increment
-
-class DatabaseConnection:
+class LoggingUtils:
     """
-    Comprehensive database utility with support for PostgreSQL and Oracle.
-    Implements all common database operations with context management.
+    Comprehensive logging utility with:
+    - Console logging
+    - Daily rotating file logs
+    - Automatic cleanup of old logs (60 days)
+    - Colored output
+    - Structured logging
     """
     
-    def __init__(self, config: DBConfig):
-        self.config = config
-        self.conn = None
-        self.cursor = None
-        self.pool = None
+    def __init__(self, log_dir: str = "logs", retention_days: int = 60):
+        """
+        Initialize logging utility
         
-        if config.db_type == 'oracle':
-            self._init_oracle()
+        Args:
+            log_dir: Directory to store log files
+            retention_days: Number of days to keep log files
+        """
+        self.log_dir = Path(log_dir)
+        self.retention_days = retention_days
+        self._configure_logger()
+        self._start_cleanup_scheduler()
     
-    def _init_oracle(self):
-        """Initialize Oracle-specific settings"""
-        if self.config.thick_mode:
-            try:
-                oracledb.init_oracle_client()
-            except Exception as e:
-                logger.warning(f"Oracle thick mode initialization failed: {e}")
+    def _configure_logger(self) -> None:
+        """Configure loguru logger with console and file sinks"""
+        # Create log directory if it doesn't exist
+        self.log_dir.mkdir(parents=True, exist_ok=True)
         
-        # Build DSN string for Oracle
-        if self.config.service_name:
-            dsn = f"{self.config.host}:{self.config.port}/{self.config.service_name}"
-        elif self.config.sid:
-            dsn = f"{self.config.host}:{self.config.port}:{self.config.sid}"
-        else:
-            dsn = self.config.host
-            
-        self.pool = oracledb.create_pool(
-            user=self.config.user,
-            password=self.config.password,
-            dsn=dsn,
-            min=self.config.pool_min,
-            max=self.config.pool_max,
-            increment=self.config.pool_increment
+        # Remove default logger
+        logger.remove()
+        
+        # Console logging configuration
+        logger.add(
+            sink=self._console_formatter,
+            level="DEBUG",
+            colorize=True,
+            backtrace=True,
+            diagnose=True,
+            format=self._console_format
+        )
+        
+        # File logging configuration (daily rotation)
+        logger.add(
+            sink=self._get_log_file_path(),
+            level="DEBUG",
+            rotation="00:00",  # Rotate at midnight
+            retention=f"{self.retention_days} days",
+            compression="zip",
+            enqueue=True,  # Thread-safe
+            backtrace=True,
+            diagnose=True,
+            format=self._file_format,
+            filter=self._file_filter
         )
     
-    def __enter__(self):
-        """Establish database connection"""
+    def _console_format(self, record: dict) -> str:
+        """Custom format for console logging"""
+        level_colors = {
+            "TRACE": "blue",
+            "DEBUG": "cyan",
+            "INFO": "green",
+            "SUCCESS": "bold green",
+            "WARNING": "yellow",
+            "ERROR": "red",
+            "CRITICAL": "bold red"
+        }
+        
+        level = record["level"].name
+        timestamp = datetime.fromtimestamp(record["time"].timestamp()).strftime("%Y-%m-%d %H:%M:%S")
+        
+        if level in level_colors:
+            level = f"<{level_colors[level]}>{level}</{level_colors[level]}>"
+        
+        return (
+            f"<light-black>{timestamp}</light-black> | "
+            f"{level} | "
+            f"<cyan>{record['name']}</cyan>:<cyan>{record['function']}</cyan>:<cyan>{record['line']}</cyan> - "
+            f"<light-white>{record['message']}</light-white>"
+        )
+    
+    def _console_formatter(self, message: str) -> None:
+        """Custom console formatter that handles colored output"""
+        print(message, flush=True)
+    
+    def _file_format(self, record: dict) -> str:
+        """Structured format for file logging"""
+        return (
+            "{time:YYYY-MM-DD HH:mm:ss.SSS} | "
+            "{level} | "
+            "{name}:{function}:{line} - "
+            "{message}\n{exception}"
+        )
+    
+    def _file_filter(self, record: dict) -> bool:
+        """Filter for file logging (can customize what gets logged to file)"""
+        return True
+    
+    def _get_log_file_path(self) -> str:
+        """Generate log file path with current date"""
+        date_str = datetime.now().strftime("%Y-%m-%d")
+        return str(self.log_dir / f"app_{date_str}.log")
+    
+    def _cleanup_old_logs(self) -> None:
+        """Clean up log files older than retention_days"""
         try:
-            if self.config.db_type == 'postgres':
-                self.conn = psycopg2.connect(
-                    dbname=self.config.dbname,
-                    user=self.config.user,
-                    password=self.config.password,
-                    host=self.config.host,
-                    port=self.config.port
-                )
-            elif self.config.db_type == 'oracle':
-                self.conn = self.pool.acquire()
+            cutoff_time = time.time() - (self.retention_days * 86400)
             
-            self.cursor = self.conn.cursor()
-            return self
-        except Exception as e:
-            logger.error(f"Connection failed: {e}")
-            raise ConnectionError(f"Could not connect to database: {e}")
-    
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        """Clean up database connection"""
-        try:
-            if self.cursor:
-                self.cursor.close()
+            for log_file in self.log_dir.glob("app_*.log"):
+                if log_file.is_file() and log_file.stat().st_mtime < cutoff_time:
+                    try:
+                        log_file.unlink()
+                        logger.info(f"Removed old log file: {log_file.name}")
+                    except Exception as e:
+                        logger.error(f"Failed to remove {log_file.name}: {e}")
             
-            if self.conn:
-                if exc_type is None:
-                    self.conn.commit()
-                else:
-                    self.conn.rollback()
-                
-                if self.config.db_type == 'oracle':
-                    self.pool.release(self.conn)
-                else:
-                    self.conn.close()
+            # Also clean up compressed logs
+            for zip_file in self.log_dir.glob("app_*.log.zip"):
+                if zip_file.is_file() and zip_file.stat().st_mtime < cutoff_time:
+                    try:
+                        zip_file.unlink()
+                        logger.info(f"Removed old compressed log: {zip_file.name}")
+                    except Exception as e:
+                        logger.error(f"Failed to remove {zip_file.name}: {e}")
         except Exception as e:
-            logger.error(f"Error during connection cleanup: {e}")
-            raise
+            logger.error(f"Log cleanup failed: {e}")
     
-    def execute(self, query: str, params: Optional[Union[tuple, dict]] = None) -> None:
-        """Execute a SQL command without returning results"""
-        try:
-            self.cursor.execute(query, params or ())
-        except Exception as e:
-            logger.error(f"Query execution failed: {e}\nQuery: {query}")
-            raise
-    
-    def fetch_all(self, query: str, params: Optional[Union[tuple, dict]] = None) -> List[Tuple]:
-        """Execute query and return all results"""
-        try:
-            self.cursor.execute(query, params or ())
-            return self.cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Fetch failed: {e}\nQuery: {query}")
-            raise
-    
-    def fetch_one(self, query: str, params: Optional[Union[tuple, dict]] = None) -> Optional[Tuple]:
-        """Execute query and return first result"""
-        try:
-            self.cursor.execute(query, params or ())
-            return self.cursor.fetchone()
-        except Exception as e:
-            logger.error(f"Fetch failed: {e}\nQuery: {query}")
-            raise
-    
-    def fetch_iter(self, query: str, params: Optional[Union[tuple, dict]] = None, 
-                  batch_size: int = 1000) -> Generator[Tuple, None, None]:
-        """Execute query and return results as a generator (for large result sets)"""
-        try:
-            self.cursor.execute(query, params or ())
+    def _start_cleanup_scheduler(self) -> None:
+        """Start background scheduler for daily log cleanup"""
+        def run_scheduler():
+            schedule.every().day.at("00:15").do(self._cleanup_old_logs)
             while True:
-                rows = self.cursor.fetchmany(batch_size)
-                if not rows:
-                    break
-                for row in rows:
-                    yield row
-        except Exception as e:
-            logger.error(f"Fetch iteration failed: {e}\nQuery: {query}")
-            raise
+                schedule.run_pending()
+                time.sleep(60)
+        
+        # Start the scheduler in a daemon thread
+        scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)
+        scheduler_thread.start()
+        logger.info("Started log cleanup scheduler")
     
-    def insert(self, table: str, data: dict, returning: Optional[str] = None) -> Optional[Tuple]:
+    @staticmethod
+    def get_logger(name: Optional[str] = None):
         """
-        Insert a single record into a table
+        Get a configured logger instance
         
         Args:
-            table: Table name
-            data: Dictionary of column: value pairs
-            returning: Optional column name to return after insert
+            name: Name of the logger (usually __name__)
             
         Returns:
-            The returned value if 'returning' specified, else None
+            Configured logger instance
         """
-        columns = ', '.join(data.keys())
-        placeholders = ', '.join([f"%({k})s" for k in data.keys()])
-        query = f"INSERT INTO {table} ({columns}) VALUES ({placeholders})"
-        
-        if returning:
-            query += f" RETURNING {returning}"
-            return self.fetch_one(query, data)
-        
-        self.execute(query, data)
-        return None
-    
-    def bulk_insert(self, table: str, columns: List[str], data: List[tuple]) -> None:
-        """
-        Insert multiple records efficiently
-        
-        Args:
-            table: Table name
-            columns: List of column names
-            data: List of tuples with values
-        """
-        col_str = ', '.join(columns)
-        placeholders = ', '.join(['%s'] * len(columns))
-        query = f"INSERT INTO {table} ({col_str}) VALUES ({placeholders})"
-        
-        try:
-            if self.config.db_type == 'postgres':
-                self.cursor.executemany(query, data)
-            elif self.config.db_type == 'oracle':
-                # Oracle handles executemany differently for optimal performance
-                self.cursor.executemany(query, data, batcherrors=True)
-                
-                # Log any errors that occurred during batch insert
-                for error in self.cursor.getbatcherrors():
-                    logger.error(f"Error inserting row {error.offset}: {error.message}")
-        except Exception as e:
-            logger.error(f"Bulk insert failed: {e}")
-            raise
-    
-    def update(self, table: str, data: dict, condition: str, 
-               condition_params: Optional[Union[tuple, dict]] = None) -> int:
-        """
-        Update records in a table
-        
-        Args:
-            table: Table name
-            data: Dictionary of column: value pairs to update
-            condition: WHERE clause condition
-            condition_params: Parameters for the WHERE clause
-            
-        Returns:
-            Number of rows affected
-        """
-        set_clause = ', '.join([f"{k} = %({k})s" for k in data.keys()])
-        query = f"UPDATE {table} SET {set_clause} WHERE {condition}"
-        
-        # Merge the data and condition parameters
-        params = data.copy()
-        if isinstance(condition_params, dict):
-            params.update(condition_params)
-        elif condition_params:
-            # For tuple params, we need to use positional placeholders
-            set_clause = ', '.join([f"{k} = %s" for k in data.keys()])
-            query = f"UPDATE {table} SET {set_clause} WHERE {condition}"
-            params = tuple(data.values()) + condition_params
-        
-        self.execute(query, params)
-        return self.cursor.rowcount
-    
-    def delete(self, table: str, condition: str, 
-               params: Optional[Union[tuple, dict]] = None) -> int:
-        """
-        Delete records from a table
-        
-        Args:
-            table: Table name
-            condition: WHERE clause condition
-            params: Parameters for the WHERE clause
-            
-        Returns:
-            Number of rows affected
-        """
-        query = f"DELETE FROM {table} WHERE {condition}"
-        self.execute(query, params)
-        return self.cursor.rowcount
-    
-    def table_exists(self, table_name: str) -> bool:
-        """Check if a table exists in the database"""
-        try:
-            if self.config.db_type == 'postgres':
-                query = """
-                    SELECT EXISTS (
-                        SELECT FROM information_schema.tables 
-                        WHERE table_name = %s
-                    )
-                """
-                return self.fetch_one(query, (table_name,))[0]
-            elif self.config.db_type == 'oracle':
-                query = """
-                    SELECT COUNT(*) FROM user_tables 
-                    WHERE table_name = UPPER(:table_name)
-                """
-                return self.fetch_one(query, {'table_name': table_name})[0] > 0
-        except Exception as e:
-            logger.error(f"Table existence check failed: {e}")
-            return False
-    
-    def get_table_columns(self, table_name: str) -> List[str]:
-        """Get list of columns for a table"""
-        try:
-            if self.config.db_type == 'postgres':
-                query = """
-                    SELECT column_name 
-                    FROM information_schema.columns 
-                    WHERE table_name = %s 
-                    ORDER BY ordinal_position
-                """
-                return [row[0] for row in self.fetch_all(query, (table_name,))]
-            elif self.config.db_type == 'oracle':
-                query = """
-                    SELECT column_name 
-                    FROM user_tab_columns 
-                    WHERE table_name = UPPER(:table_name) 
-                    ORDER BY column_id
-                """
-                return [row[0] for row in self.fetch_all(query, {'table_name': table_name})]
-        except Exception as e:
-            logger.error(f"Column retrieval failed: {e}")
-            return []
-    
-    def call_procedure(self, proc_name: str, params: Optional[Union[tuple, dict]] = None):
-        """
-        Call a stored procedure
-        
-        Args:
-            proc_name: Procedure name
-            params: Parameters for the procedure
-        """
-        try:
-            if self.config.db_type == 'postgres':
-                query = f"CALL {proc_name}(%s)" if isinstance(params, tuple) else f"CALL {proc_name}(%(param)s)"
-            elif self.config.db_type == 'oracle':
-                query = f"BEGIN {proc_name}(:param); END;"
-            
-            self.execute(query, params)
-        except Exception as e:
-            logger.error(f"Procedure call failed: {e}")
-            raise
-    
-    def close_pool(self):
-        """Close the connection pool (for Oracle)"""
-        if self.config.db_type == 'oracle' and self.pool:
-            self.pool.close()
+        return logger.bind(name=name)
 
 # Example usage
 if __name__ == "__main__":
-    # Example configuration
-    postgres_config = DBConfig(
-        db_type='postgres',
-        user='your_user',
-        password='your_password',
-        host='localhost',
-        port=5432,
-        dbname='your_db'
-    )
+    # Initialize logging
+    logging_utils = LoggingUtils(log_dir="example_logs", retention_days=60)
     
-    oracle_config = DBConfig(
-        db_type='oracle',
-        user='your_user',
-        password='your_password',
-        host='localhost',
-        port=1521,
-        service_name='ORCLPDB1',
-        thick_mode=False
-    )
+    # Get logger for a module
+    log = logging_utils.get_logger(__name__)
     
-    # PostgreSQL operations example
+    # Example log messages
+    log.debug("This is a debug message")
+    log.info("This is an info message")
+    log.warning("This is a warning message")
+    log.error("This is an error message")
+    
     try:
-        with DatabaseConnection(postgres_config) as db:
-            # Create table if not exists
-            if not db.table_exists('employees'):
-                db.execute("""
-                    CREATE TABLE employees (
-                        id SERIAL PRIMARY KEY,
-                        name VARCHAR(100) NOT NULL,
-                        email VARCHAR(100) UNIQUE,
-                        salary DECIMAL(10,2),
-                        department VARCHAR(50),
-                        hire_date DATE DEFAULT CURRENT_DATE
-                    )
-                """)
-                logger.info("Created employees table")
-            
-            # Insert single record
-            emp_id = db.insert(
-                table='employees',
-                data={
-                    'name': 'John Doe',
-                    'email': 'john@example.com',
-                    'salary': 75000.00,
-                    'department': 'Engineering'
-                },
-                returning='id'
-            )
-            logger.info(f"Inserted employee with ID: {emp_id[0]}")
-            
-            # Bulk insert
-            employees = [
-                ('Jane Smith', 'jane@example.com', 80000.00, 'Marketing'),
-                ('Bob Johnson', 'bob@example.com', 65000.00, 'HR'),
-                ('Alice Brown', 'alice@example.com', 90000.00, 'Engineering')
-            ]
-            db.bulk_insert(
-                table='employees',
-                columns=['name', 'email', 'salary', 'department'],
-                data=employees
-            )
-            logger.info("Bulk inserted employees")
-            
-            # Update records
-            rows_updated = db.update(
-                table='employees',
-                data={'salary': 85000.00},
-                condition='department = %s',
-                condition_params=('Engineering',)
-            )
-            logger.info(f"Updated {rows_updated} employees in Engineering")
-            
-            # Query data
-            engineering_team = db.fetch_all(
-                "SELECT name, email, salary FROM employees WHERE department = %s ORDER BY salary DESC",
-                ('Engineering',)
-            )
-            logger.info("Engineering team:")
-            for emp in engineering_team:
-                logger.info(f"{emp[0]} - {emp[1]} - ${emp[2]:,.2f}")
-            
-            # Delete record
-            rows_deleted = db.delete(
-                table='employees',
-                condition='email = %s',
-                params=('bob@example.com',)
-            )
-            logger.info(f"Deleted {rows_deleted} employee(s)")
-            
+        1 / 0
     except Exception as e:
-        logger.error(f"PostgreSQL operation failed: {e}")
+        log.exception("This is an exception with stack trace")
     
-    # Oracle operations example
-    try:
-        with DatabaseConnection(oracle_config) as db:
-            # Create table if not exists
-            if not db.table_exists('EMPLOYEES'):
-                db.execute("""
-                    BEGIN
-                        EXECUTE IMMEDIATE 'CREATE TABLE employees (
-                            id NUMBER GENERATED ALWAYS AS IDENTITY,
-                            name VARCHAR2(100) NOT NULL,
-                            email VARCHAR2(100),
-                            salary NUMBER(10,2),
-                            department VARCHAR2(50),
-                            hire_date DATE DEFAULT SYSDATE,
-                            CONSTRAINT emp_pk PRIMARY KEY (id),
-                            CONSTRAINT emp_email_uk UNIQUE (email)
-                        )';
-                    EXCEPTION
-                        WHEN OTHERS THEN
-                            IF SQLCODE = -955 THEN NULL; -- table already exists
-                            ELSE RAISE;
-                            END IF;
-                    END;
-                """)
-                logger.info("Created employees table")
-            
-            # Insert single record
-            emp_id = db.insert(
-                table='employees',
-                data={
-                    'name': 'John Doe',
-                    'email': 'john@example.com',
-                    'salary': 75000.00,
-                    'department': 'Engineering'
-                },
-                returning='id'
-            )
-            logger.info(f"Inserted employee with ID: {emp_id[0]}")
-            
-            # Bulk insert
-            employees = [
-                ('Jane Smith', 'jane@example.com', 80000.00, 'Marketing'),
-                ('Bob Johnson', 'bob@example.com', 65000.00, 'HR'),
-                ('Alice Brown', 'alice@example.com', 90000.00, 'Engineering')
-            ]
-            db.bulk_insert(
-                table='employees',
-                columns=['name', 'email', 'salary', 'department'],
-                data=employees
-            )
-            logger.info("Bulk inserted employees")
-            
-            # Call a stored procedure (example)
-            try:
-                db.call_procedure('my_package.give_raise', {'param': 'Engineering'})
-                logger.info("Called give_raise procedure for Engineering department")
-            except Exception as e:
-                logger.warning(f"Procedure call failed (might not exist): {e}")
-            
-    except Exception as e:
-        logger.error(f"Oracle operation failed: {e}")
+    log.success("This is a success message!")
 ```
 
-## Key Features of This Utility:
+## Key Features
 
-1. **Unified Interface** for both PostgreSQL and Oracle databases
-2. **Complete CRUD Operations**:
-   - `insert()` - Single record insertion with optional returning clause
-   - `bulk_insert()` - Efficient multi-row insertion
-   - `update()` - Record modification with conditions
-   - `delete()` - Record deletion with conditions
-   - `fetch_all()`, `fetch_one()`, `fetch_iter()` - Various query methods
+1. **Daily Rotating Log Files**:
+   - Creates new log file each day with date in filename (e.g., `app_2023-11-15.log`)
+   - Automatically rotates at midnight
 
-3. **Advanced Features**:
-   - Connection pooling for Oracle
-   - Table existence checking
-   - Column listing
-   - Stored procedure execution
-   - Batch operations with error handling
+2. **Automatic Cleanup**:
+   - Background thread runs daily cleanup at 00:15
+   - Removes log files older than 60 days (configurable)
+   - Also cleans up compressed log files (.zip)
 
-4. **Production-Ready**:
-   - Comprehensive error handling
-   - Detailed logging
-   - Proper resource cleanup
-   - Type hints throughout
-   - Configurable connection parameters
+3. **Enhanced Logging**:
+   - Color-coded console output
+   - Structured file logging
+   - Thread-safe operation
+   - Stack traces for exceptions
+   - Compression of rotated logs
 
-5. **Performance Optimizations**:
-   - Generator-based fetching for large result sets
-   - Efficient bulk operations
-   - Oracle-specific optimizations
+4. **Easy Integration**:
+   - Simple `get_logger()` interface
+   - Works like standard Python logging
+   - Can be used across modules
 
-6. **Context Management**:
-   - Automatic connection handling
-   - Transaction management (commit/rollback)
-   - Pool management for Oracle
+5. **Customization**:
+   - Adjustable retention period
+   - Custom log directory
+   - Separate filters/formatters for console vs file
 
-To use this utility:
-1. Install required packages: `pip install psycopg2-binary oracledb`
-2. Configure your database connection with the `DBConfig` dataclass
-3. Use the context manager (`with` statement) for all operations
+## Usage Instructions
 
-This implementation provides a solid foundation that can be extended with additional database-specific features as needed.
+1. Install required packages:
+   ```bash
+   pip install loguru schedule
+   ```
+
+2. In your application:
+   ```python
+   from logging_utils import LoggingUtils
+   
+   # Initialize once (typically in your main.py or __init__.py)
+   logging_utils = LoggingUtils(log_dir="my_app_logs", retention_days=30)
+   
+   # In each module
+   log = logging_utils.get_logger(__name__)
+   
+   # Use like normal logger
+   log.info("Application started")
+   ```
+
+3. The system will automatically:
+   - Create dated log files
+   - Rotate at midnight
+   - Clean up old logs
+   - Provide beautiful colored console output
+
+## Customization Options
+
+- Change log directory: `LoggingUtils(log_dir="custom_path")`
+- Adjust retention period: `LoggingUtils(retention_days=90)`
+- Modify log formats by editing `_console_format` and `_file_format` methods
+- Change cleanup schedule by modifying `_start_cleanup_scheduler`
+
+This implementation provides production-ready logging with all the features you requested while being easy to integrate into any Python application.
