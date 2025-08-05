@@ -1,302 +1,514 @@
-Here's an updated version using the newer `oracledb` library (the replacement for `cx_Oracle`) with context management protocol for both PostgreSQL and Oracle databases:
+# Comprehensive Database Utility with PostgreSQL and Oracle Support
+
+Here's a complete database utility that implements context managers for both PostgreSQL and Oracle with all CRUD operations and more:
 
 ```python
-"""
-Python database connection classes with context management protocol for:
-1. PostgreSQL (using psycopg2)
-2. Oracle (using oracledb - the new official Oracle Python driver)
-
-Features:
-- Proper connection handling with context managers
-- Connection pooling for Oracle
-- Parameter validation
-- Type hints
-- Error handling
-- Query execution methods
-"""
-
 import psycopg2
 import oracledb
-from typing import Optional, Dict, Any, List, Union
+from typing import Optional, Dict, Any, List, Union, Tuple, Generator
+from dataclasses import dataclass
+import logging
 
-class PostgresDBConnection:
-    """Context manager for PostgreSQL database connections using psycopg2."""
-    
-    def __init__(self, 
-                 dbname: str, 
-                 user: str, 
-                 password: str, 
-                 host: str = 'localhost', 
-                 port: int = 5432,
-                 **kwargs: Any):
-        """
-        Initialize PostgreSQL connection parameters.
-        
-        Args:
-            dbname: Database name
-            user: Username
-            password: Password
-            host: Host address (default: 'localhost')
-            port: Port number (default: 5432)
-            kwargs: Additional connection parameters for psycopg2.connect()
-        """
-        self.connection_params = {
-            'dbname': dbname,
-            'user': user,
-            'password': password,
-            'host': host,
-            'port': port,
-            **kwargs
-        }
-        self.conn: Optional[psycopg2.extensions.connection] = None
-        self.cursor: Optional[psycopg2.extensions.cursor] = None
-    
-    def __enter__(self) -> 'PostgresDBConnection':
-        """Establish connection and return cursor when entering context."""
-        try:
-            self.conn = psycopg2.connect(**self.connection_params)
-            self.cursor = self.conn.cursor()
-            return self
-        except psycopg2.Error as e:
-            raise ConnectionError(f"Failed to connect to PostgreSQL: {e}")
-    
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
-        """Clean up connection when exiting context."""
-        if self.cursor:
-            self.cursor.close()
-        if self.conn:
-            if exc_type is None:
-                self.conn.commit()
-            else:
-                self.conn.rollback()
-            self.conn.close()
-    
-    def execute_query(self, 
-                     query: str, 
-                     params: Optional[Union[tuple, Dict[str, Any]]] = None,
-                     fetch: bool = True) -> Optional[List[tuple]]:
-        """
-        Execute a SQL query.
-        
-        Args:
-            query: SQL query string
-            params: Optional parameters for parameterized queries
-            fetch: Whether to fetch results (for SELECT queries)
-            
-        Returns:
-            List of tuples representing query results if fetch=True, else None
-        """
-        if not self.cursor:
-            raise RuntimeError("Database cursor not available")
-        
-        try:
-            self.cursor.execute(query, params)
-            if fetch and self.cursor.description:  # If it's a SELECT query
-                return self.cursor.fetchall()
-            return None
-        except psycopg2.Error as e:
-            raise RuntimeError(f"Query execution failed: {e}")
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-class OracleDBConnection:
-    """Context manager for Oracle database connections using oracledb."""
+@dataclass
+class DBConfig:
+    """Configuration for database connections"""
+    db_type: str  # 'postgres' or 'oracle'
+    user: str
+    password: str
+    host: str = 'localhost'
+    port: Optional[int] = None
+    dbname: Optional[str] = None  # For PostgreSQL
+    service_name: Optional[str] = None  # For Oracle
+    sid: Optional[str] = None  # For Oracle (alternative to service_name)
+    thick_mode: bool = False  # For Oracle
+    pool_min: int = 1  # Connection pool minimum
+    pool_max: int = 5  # Connection pool maximum
+    pool_increment: int = 1  # Connection pool increment
+
+class DatabaseConnection:
+    """
+    Comprehensive database utility with support for PostgreSQL and Oracle.
+    Implements all common database operations with context management.
+    """
     
-    def __init__(self,
-                 user: str,
-                 password: str,
-                 dsn: str,
-                 *,
-                 thick_mode: bool = False,
-                 pool_min: int = 1,
-                 pool_max: int = 2,
-                 pool_increment: int = 1,
-                 **kwargs: Any):
-        """
-        Initialize Oracle connection parameters.
+    def __init__(self, config: DBConfig):
+        self.config = config
+        self.conn = None
+        self.cursor = None
+        self.pool = None
         
-        Args:
-            user: Database username
-            password: Database password
-            dsn: Data Source Name (connection string)
-            thick_mode: Whether to use thick mode (requires Oracle Client)
-            pool_min: Minimum number of connections in pool
-            pool_max: Maximum number of connections in pool
-            pool_increment: Connection increment for pool
-            kwargs: Additional connection parameters for oracledb.connect()
-        """
-        if thick_mode:
-            oracledb.init_oracle_client()
+        if config.db_type == 'oracle':
+            self._init_oracle()
+    
+    def _init_oracle(self):
+        """Initialize Oracle-specific settings"""
+        if self.config.thick_mode:
+            try:
+                oracledb.init_oracle_client()
+            except Exception as e:
+                logger.warning(f"Oracle thick mode initialization failed: {e}")
+        
+        # Build DSN string for Oracle
+        if self.config.service_name:
+            dsn = f"{self.config.host}:{self.config.port}/{self.config.service_name}"
+        elif self.config.sid:
+            dsn = f"{self.config.host}:{self.config.port}:{self.config.sid}"
+        else:
+            dsn = self.config.host
             
         self.pool = oracledb.create_pool(
-            user=user,
-            password=password,
+            user=self.config.user,
+            password=self.config.password,
             dsn=dsn,
-            min=pool_min,
-            max=pool_max,
-            increment=pool_increment,
-            **kwargs
+            min=self.config.pool_min,
+            max=self.config.pool_max,
+            increment=self.config.pool_increment
         )
-        self.conn: Optional[oracledb.Connection] = None
-        self.cursor: Optional[oracledb.Cursor] = None
     
-    def __enter__(self) -> 'OracleDBConnection':
-        """Establish connection from pool and return cursor when entering context."""
+    def __enter__(self):
+        """Establish database connection"""
         try:
-            self.conn = self.pool.acquire()
+            if self.config.db_type == 'postgres':
+                self.conn = psycopg2.connect(
+                    dbname=self.config.dbname,
+                    user=self.config.user,
+                    password=self.config.password,
+                    host=self.config.host,
+                    port=self.config.port
+                )
+            elif self.config.db_type == 'oracle':
+                self.conn = self.pool.acquire()
+            
             self.cursor = self.conn.cursor()
             return self
-        except oracledb.Error as e:
-            raise ConnectionError(f"Failed to connect to Oracle: {e}")
+        except Exception as e:
+            logger.error(f"Connection failed: {e}")
+            raise ConnectionError(f"Could not connect to database: {e}")
     
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
-        """Release connection back to pool when exiting context."""
-        if self.cursor:
-            self.cursor.close()
-        if self.conn:
-            if exc_type is None:
-                self.conn.commit()
-            else:
-                self.conn.rollback()
-            self.pool.release(self.conn)
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Clean up database connection"""
+        try:
+            if self.cursor:
+                self.cursor.close()
+            
+            if self.conn:
+                if exc_type is None:
+                    self.conn.commit()
+                else:
+                    self.conn.rollback()
+                
+                if self.config.db_type == 'oracle':
+                    self.pool.release(self.conn)
+                else:
+                    self.conn.close()
+        except Exception as e:
+            logger.error(f"Error during connection cleanup: {e}")
+            raise
     
-    def execute_query(self,
-                     query: str,
-                     params: Optional[Union[tuple, Dict[str, Any]]] = None,
-                     fetch: bool = True) -> Optional[List[tuple]]:
+    def execute(self, query: str, params: Optional[Union[tuple, dict]] = None) -> None:
+        """Execute a SQL command without returning results"""
+        try:
+            self.cursor.execute(query, params or ())
+        except Exception as e:
+            logger.error(f"Query execution failed: {e}\nQuery: {query}")
+            raise
+    
+    def fetch_all(self, query: str, params: Optional[Union[tuple, dict]] = None) -> List[Tuple]:
+        """Execute query and return all results"""
+        try:
+            self.cursor.execute(query, params or ())
+            return self.cursor.fetchall()
+        except Exception as e:
+            logger.error(f"Fetch failed: {e}\nQuery: {query}")
+            raise
+    
+    def fetch_one(self, query: str, params: Optional[Union[tuple, dict]] = None) -> Optional[Tuple]:
+        """Execute query and return first result"""
+        try:
+            self.cursor.execute(query, params or ())
+            return self.cursor.fetchone()
+        except Exception as e:
+            logger.error(f"Fetch failed: {e}\nQuery: {query}")
+            raise
+    
+    def fetch_iter(self, query: str, params: Optional[Union[tuple, dict]] = None, 
+                  batch_size: int = 1000) -> Generator[Tuple, None, None]:
+        """Execute query and return results as a generator (for large result sets)"""
+        try:
+            self.cursor.execute(query, params or ())
+            while True:
+                rows = self.cursor.fetchmany(batch_size)
+                if not rows:
+                    break
+                for row in rows:
+                    yield row
+        except Exception as e:
+            logger.error(f"Fetch iteration failed: {e}\nQuery: {query}")
+            raise
+    
+    def insert(self, table: str, data: dict, returning: Optional[str] = None) -> Optional[Tuple]:
         """
-        Execute a SQL query.
+        Insert a single record into a table
         
         Args:
-            query: SQL query string
-            params: Optional parameters for parameterized queries
-            fetch: Whether to fetch results (for SELECT queries)
+            table: Table name
+            data: Dictionary of column: value pairs
+            returning: Optional column name to return after insert
             
         Returns:
-            List of tuples representing query results if fetch=True, else None
+            The returned value if 'returning' specified, else None
         """
-        if not self.cursor:
-            raise RuntimeError("Database cursor not available")
+        columns = ', '.join(data.keys())
+        placeholders = ', '.join([f"%({k})s" for k in data.keys()])
+        query = f"INSERT INTO {table} ({columns}) VALUES ({placeholders})"
+        
+        if returning:
+            query += f" RETURNING {returning}"
+            return self.fetch_one(query, data)
+        
+        self.execute(query, data)
+        return None
+    
+    def bulk_insert(self, table: str, columns: List[str], data: List[tuple]) -> None:
+        """
+        Insert multiple records efficiently
+        
+        Args:
+            table: Table name
+            columns: List of column names
+            data: List of tuples with values
+        """
+        col_str = ', '.join(columns)
+        placeholders = ', '.join(['%s'] * len(columns))
+        query = f"INSERT INTO {table} ({col_str}) VALUES ({placeholders})"
         
         try:
-            self.cursor.execute(query, params or {})
-            if fetch and self.cursor.description:  # If it's a SELECT query
-                return self.cursor.fetchall()
-            return None
-        except oracledb.Error as e:
-            raise RuntimeError(f"Query execution failed: {e}")
+            if self.config.db_type == 'postgres':
+                self.cursor.executemany(query, data)
+            elif self.config.db_type == 'oracle':
+                # Oracle handles executemany differently for optimal performance
+                self.cursor.executemany(query, data, batcherrors=True)
+                
+                # Log any errors that occurred during batch insert
+                for error in self.cursor.getbatcherrors():
+                    logger.error(f"Error inserting row {error.offset}: {error.message}")
+        except Exception as e:
+            logger.error(f"Bulk insert failed: {e}")
+            raise
     
-    def close_pool(self) -> None:
-        """Close the connection pool."""
-        self.pool.close()
+    def update(self, table: str, data: dict, condition: str, 
+               condition_params: Optional[Union[tuple, dict]] = None) -> int:
+        """
+        Update records in a table
+        
+        Args:
+            table: Table name
+            data: Dictionary of column: value pairs to update
+            condition: WHERE clause condition
+            condition_params: Parameters for the WHERE clause
+            
+        Returns:
+            Number of rows affected
+        """
+        set_clause = ', '.join([f"{k} = %({k})s" for k in data.keys()])
+        query = f"UPDATE {table} SET {set_clause} WHERE {condition}"
+        
+        # Merge the data and condition parameters
+        params = data.copy()
+        if isinstance(condition_params, dict):
+            params.update(condition_params)
+        elif condition_params:
+            # For tuple params, we need to use positional placeholders
+            set_clause = ', '.join([f"{k} = %s" for k in data.keys()])
+            query = f"UPDATE {table} SET {set_clause} WHERE {condition}"
+            params = tuple(data.values()) + condition_params
+        
+        self.execute(query, params)
+        return self.cursor.rowcount
+    
+    def delete(self, table: str, condition: str, 
+               params: Optional[Union[tuple, dict]] = None) -> int:
+        """
+        Delete records from a table
+        
+        Args:
+            table: Table name
+            condition: WHERE clause condition
+            params: Parameters for the WHERE clause
+            
+        Returns:
+            Number of rows affected
+        """
+        query = f"DELETE FROM {table} WHERE {condition}"
+        self.execute(query, params)
+        return self.cursor.rowcount
+    
+    def table_exists(self, table_name: str) -> bool:
+        """Check if a table exists in the database"""
+        try:
+            if self.config.db_type == 'postgres':
+                query = """
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables 
+                        WHERE table_name = %s
+                    )
+                """
+                return self.fetch_one(query, (table_name,))[0]
+            elif self.config.db_type == 'oracle':
+                query = """
+                    SELECT COUNT(*) FROM user_tables 
+                    WHERE table_name = UPPER(:table_name)
+                """
+                return self.fetch_one(query, {'table_name': table_name})[0] > 0
+        except Exception as e:
+            logger.error(f"Table existence check failed: {e}")
+            return False
+    
+    def get_table_columns(self, table_name: str) -> List[str]:
+        """Get list of columns for a table"""
+        try:
+            if self.config.db_type == 'postgres':
+                query = """
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_name = %s 
+                    ORDER BY ordinal_position
+                """
+                return [row[0] for row in self.fetch_all(query, (table_name,))]
+            elif self.config.db_type == 'oracle':
+                query = """
+                    SELECT column_name 
+                    FROM user_tab_columns 
+                    WHERE table_name = UPPER(:table_name) 
+                    ORDER BY column_id
+                """
+                return [row[0] for row in self.fetch_all(query, {'table_name': table_name})]
+        except Exception as e:
+            logger.error(f"Column retrieval failed: {e}")
+            return []
+    
+    def call_procedure(self, proc_name: str, params: Optional[Union[tuple, dict]] = None):
+        """
+        Call a stored procedure
+        
+        Args:
+            proc_name: Procedure name
+            params: Parameters for the procedure
+        """
+        try:
+            if self.config.db_type == 'postgres':
+                query = f"CALL {proc_name}(%s)" if isinstance(params, tuple) else f"CALL {proc_name}(%(param)s)"
+            elif self.config.db_type == 'oracle':
+                query = f"BEGIN {proc_name}(:param); END;"
+            
+            self.execute(query, params)
+        except Exception as e:
+            logger.error(f"Procedure call failed: {e}")
+            raise
+    
+    def close_pool(self):
+        """Close the connection pool (for Oracle)"""
+        if self.config.db_type == 'oracle' and self.pool:
+            self.pool.close()
 
 # Example usage
 if __name__ == "__main__":
-    # PostgreSQL example
-    print("PostgreSQL Example:")
-    try:
-        with PostgresDBConnection(
-            dbname="your_db",
-            user="your_user",
-            password="your_password",
-            host="localhost"
-        ) as pg_db:
-            # Create table
-            pg_db.execute_query("""
-                CREATE TABLE IF NOT EXISTS test_table (
-                    id SERIAL PRIMARY KEY,
-                    name VARCHAR(100),
-                    value INTEGER
-                )
-            """, fetch=False)
-            
-            # Insert data
-            pg_db.execute_query(
-                "INSERT INTO test_table (name, value) VALUES (%s, %s)",
-                ("Sample", 42),
-                fetch=False
-            )
-            
-            # Query data
-            results = pg_db.execute_query("SELECT * FROM test_table")
-            for row in results:
-                print(row)
-    except Exception as e:
-        print(f"PostgreSQL error: {e}")
+    # Example configuration
+    postgres_config = DBConfig(
+        db_type='postgres',
+        user='your_user',
+        password='your_password',
+        host='localhost',
+        port=5432,
+        dbname='your_db'
+    )
     
-    # Oracle example
-    print("\nOracle Example:")
+    oracle_config = DBConfig(
+        db_type='oracle',
+        user='your_user',
+        password='your_password',
+        host='localhost',
+        port=1521,
+        service_name='ORCLPDB1',
+        thick_mode=False
+    )
+    
+    # PostgreSQL operations example
     try:
-        # Initialize connection pool (would normally do this once at app startup)
-        oracle_pool = OracleDBConnection(
-            user="your_user",
-            password="your_password",
-            dsn="localhost:1521/ORCLPDB1",
-            thick_mode=False  # Set to True if you need thick mode features
-        )
-        
-        with oracle_pool as ora_db:
-            # Create table
-            ora_db.execute_query("""
-                BEGIN
-                    EXECUTE IMMEDIATE 'CREATE TABLE test_table (
-                        id NUMBER GENERATED ALWAYS AS IDENTITY,
-                        name VARCHAR2(100),
-                        value NUMBER,
-                        PRIMARY KEY (id)
-                    )';
-                EXCEPTION
-                    WHEN OTHERS THEN
-                        IF SQLCODE = -955 THEN NULL; -- table already exists
-                        ELSE RAISE;
-                        END IF;
-                END;
-            """, fetch=False)
+        with DatabaseConnection(postgres_config) as db:
+            # Create table if not exists
+            if not db.table_exists('employees'):
+                db.execute("""
+                    CREATE TABLE employees (
+                        id SERIAL PRIMARY KEY,
+                        name VARCHAR(100) NOT NULL,
+                        email VARCHAR(100) UNIQUE,
+                        salary DECIMAL(10,2),
+                        department VARCHAR(50),
+                        hire_date DATE DEFAULT CURRENT_DATE
+                    )
+                """)
+                logger.info("Created employees table")
             
-            # Insert data
-            ora_db.execute_query(
-                "INSERT INTO test_table (name, value) VALUES (:1, :2)",
-                ("Oracle Sample", 99),
-                fetch=False
+            # Insert single record
+            emp_id = db.insert(
+                table='employees',
+                data={
+                    'name': 'John Doe',
+                    'email': 'john@example.com',
+                    'salary': 75000.00,
+                    'department': 'Engineering'
+                },
+                returning='id'
             )
+            logger.info(f"Inserted employee with ID: {emp_id[0]}")
+            
+            # Bulk insert
+            employees = [
+                ('Jane Smith', 'jane@example.com', 80000.00, 'Marketing'),
+                ('Bob Johnson', 'bob@example.com', 65000.00, 'HR'),
+                ('Alice Brown', 'alice@example.com', 90000.00, 'Engineering')
+            ]
+            db.bulk_insert(
+                table='employees',
+                columns=['name', 'email', 'salary', 'department'],
+                data=employees
+            )
+            logger.info("Bulk inserted employees")
+            
+            # Update records
+            rows_updated = db.update(
+                table='employees',
+                data={'salary': 85000.00},
+                condition='department = %s',
+                condition_params=('Engineering',)
+            )
+            logger.info(f"Updated {rows_updated} employees in Engineering")
             
             # Query data
-            results = ora_db.execute_query("SELECT * FROM test_table")
-            for row in results:
-                print(row)
-        
-        # Close pool when done (typically at application shutdown)
-        oracle_pool.close_pool()
+            engineering_team = db.fetch_all(
+                "SELECT name, email, salary FROM employees WHERE department = %s ORDER BY salary DESC",
+                ('Engineering',)
+            )
+            logger.info("Engineering team:")
+            for emp in engineering_team:
+                logger.info(f"{emp[0]} - {emp[1]} - ${emp[2]:,.2f}")
+            
+            # Delete record
+            rows_deleted = db.delete(
+                table='employees',
+                condition='email = %s',
+                params=('bob@example.com',)
+            )
+            logger.info(f"Deleted {rows_deleted} employee(s)")
+            
     except Exception as e:
-        print(f"Oracle error: {e}")
+        logger.error(f"PostgreSQL operation failed: {e}")
+    
+    # Oracle operations example
+    try:
+        with DatabaseConnection(oracle_config) as db:
+            # Create table if not exists
+            if not db.table_exists('EMPLOYEES'):
+                db.execute("""
+                    BEGIN
+                        EXECUTE IMMEDIATE 'CREATE TABLE employees (
+                            id NUMBER GENERATED ALWAYS AS IDENTITY,
+                            name VARCHAR2(100) NOT NULL,
+                            email VARCHAR2(100),
+                            salary NUMBER(10,2),
+                            department VARCHAR2(50),
+                            hire_date DATE DEFAULT SYSDATE,
+                            CONSTRAINT emp_pk PRIMARY KEY (id),
+                            CONSTRAINT emp_email_uk UNIQUE (email)
+                        )';
+                    EXCEPTION
+                        WHEN OTHERS THEN
+                            IF SQLCODE = -955 THEN NULL; -- table already exists
+                            ELSE RAISE;
+                            END IF;
+                    END;
+                """)
+                logger.info("Created employees table")
+            
+            # Insert single record
+            emp_id = db.insert(
+                table='employees',
+                data={
+                    'name': 'John Doe',
+                    'email': 'john@example.com',
+                    'salary': 75000.00,
+                    'department': 'Engineering'
+                },
+                returning='id'
+            )
+            logger.info(f"Inserted employee with ID: {emp_id[0]}")
+            
+            # Bulk insert
+            employees = [
+                ('Jane Smith', 'jane@example.com', 80000.00, 'Marketing'),
+                ('Bob Johnson', 'bob@example.com', 65000.00, 'HR'),
+                ('Alice Brown', 'alice@example.com', 90000.00, 'Engineering')
+            ]
+            db.bulk_insert(
+                table='employees',
+                columns=['name', 'email', 'salary', 'department'],
+                data=employees
+            )
+            logger.info("Bulk inserted employees")
+            
+            # Call a stored procedure (example)
+            try:
+                db.call_procedure('my_package.give_raise', {'param': 'Engineering'})
+                logger.info("Called give_raise procedure for Engineering department")
+            except Exception as e:
+                logger.warning(f"Procedure call failed (might not exist): {e}")
+            
+    except Exception as e:
+        logger.error(f"Oracle operation failed: {e}")
 ```
 
-### Key Improvements in this Version:
+## Key Features of This Utility:
 
-1. **OracleDB using oracledb**:
-   - Uses the modern `oracledb` driver (successor to cx_Oracle)
-   - Supports both thin and thick modes
-   - Implements connection pooling for better performance
+1. **Unified Interface** for both PostgreSQL and Oracle databases
+2. **Complete CRUD Operations**:
+   - `insert()` - Single record insertion with optional returning clause
+   - `bulk_insert()` - Efficient multi-row insertion
+   - `update()` - Record modification with conditions
+   - `delete()` - Record deletion with conditions
+   - `fetch_all()`, `fetch_one()`, `fetch_iter()` - Various query methods
 
-2. **Enhanced Features**:
+3. **Advanced Features**:
    - Connection pooling for Oracle
-   - Better parameter handling for both databases
-   - Optional fetch parameter for execute_query
-   - Support for both tuple and dict parameter styles
-   - Proper resource cleanup
+   - Table existence checking
+   - Column listing
+   - Stored procedure execution
+   - Batch operations with error handling
 
-3. **Usage Improvements**:
-   - More complete example with table creation and data manipulation
-   - Better error handling
+4. **Production-Ready**:
+   - Comprehensive error handling
+   - Detailed logging
+   - Proper resource cleanup
    - Type hints throughout
    - Configurable connection parameters
 
-4. **Production-ready**:
-   - The Oracle implementation is particularly suited for production use with pooling
-   - Proper transaction management
-   - Resource cleanup in all cases
+5. **Performance Optimizations**:
+   - Generator-based fetching for large result sets
+   - Efficient bulk operations
+   - Oracle-specific optimizations
 
-To use this code, install the required packages:
-```bash
-pip install psycopg2-binary oracledb
-```
+6. **Context Management**:
+   - Automatic connection handling
+   - Transaction management (commit/rollback)
+   - Pool management for Oracle
 
-Note: For Oracle thick mode, you may need to download the Oracle Instant Client separately if you need those features.
+To use this utility:
+1. Install required packages: `pip install psycopg2-binary oracledb`
+2. Configure your database connection with the `DBConfig` dataclass
+3. Use the context manager (`with` statement) for all operations
+
+This implementation provides a solid foundation that can be extended with additional database-specific features as needed.
